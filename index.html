@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Web Design Quest AR</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: white;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Mirrored Video Canvas */
+        #cameraCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect */
+            z-index: 1;
+            filter: brightness(0.4) blur(2px); /* Darken to make UI pop */
+            transition: filter 0.5s ease;
+        }
+
+        /* Effects Canvas (Confetti, etc) overlaying everything */
+        #effectsCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        /* UI Layer */
+        #uiLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none; /* Let pointer events pass through to specific interactive elements if needed, though we use AR */
+        }
+
+        .interactive-element {
+            pointer-events: auto;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .interactive-element.hover-active {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
+            border-color: #3b82f6;
+        }
+
+        /* Answer Cards */
+        .option-card {
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        /* Feedback States */
+        .option-card.correct {
+            background: rgba(16, 185, 129, 0.9); /* Emerald 500 */
+            border-color: #10b981;
+            box-shadow: 0 0 40px rgba(16, 185, 129, 0.8);
+            transform: scale(1.05);
+        }
+
+        .option-card.incorrect {
+            background: rgba(239, 68, 68, 0.9); /* Red 500 */
+            border-color: #ef4444;
+            box-shadow: 0 0 40px rgba(239, 68, 68, 0.8);
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-8px, 0, 0); }
+            40%, 60% { transform: translate3d(8px, 0, 0); }
+        }
+
+        /* Glowing ring for index finger */
+        .ar-cursor {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 9999;
+            box-shadow: 0 0 15px rgba(255,255,255,0.5);
+            transition: opacity 0.1s;
+        }
+
+        .ar-cursor .progress-ring {
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 4px solid transparent;
+            border-top-color: #3b82f6;
+            border-right-color: #3b82f6;
+            transform: rotate(-45deg);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .ar-cursor.loading .progress-ring {
+            opacity: 1;
+            animation: spinAndFill 1s linear forwards; /* 1 second dwell time */
+        }
+
+        @keyframes spinAndFill {
+            0% { transform: rotate(-45deg); border-bottom-color: transparent; border-left-color: transparent; }
+            50% { border-bottom-color: #3b82f6; border-left-color: transparent; }
+            100% { transform: rotate(315deg); border-bottom-color: #3b82f6; border-left-color: #3b82f6; }
+        }
+
+        /* Hidden class */
+        .hidden { display: none !important; }
+
+        /* Loader */
+        .loader {
+            border: 5px solid rgba(255,255,255,0.1);
+            border-top: 5px solid #3b82f6;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    </style>
+</head>
+<body>
+
+    <!-- Hidden Video Element for MediaPipe -->
+    <video id="inputVideo" class="hidden" autoplay playsinline></video>
+
+    <!-- Canvas for drawing camera feed and landmarks (Mirrored via CSS) -->
+    <canvas id="cameraCanvas"></canvas>
+
+    <!-- Canvas for visual effects like confetti -->
+    <canvas id="effectsCanvas"></canvas>
+
+    <!-- Custom AR Cursor -->
+    <div id="arCursor" class="ar-cursor hidden">
+        <div class="progress-ring" id="arCursorProgress"></div>
+    </div>
+
+    <!-- UI Overlay Layer -->
+    <div id="uiLayer">
+
+        <!-- Screen 1: Loading / Initialization -->
+        <div id="loadingScreen" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 bg-opacity-95 z-50">
+            <div class="loader mb-6"></div>
+            <h2 class="text-3xl font-bold text-white mb-2 tracking-wide">กำลังเตรียมระบบ AR...</h2>
+            <p class="text-slate-300 text-lg">โปรดอนุญาตการเข้าถึงกล้องและรอสักครู่</p>
+        </div>
+
+        <!-- Screen 2: Start Game (Updated with vibrant colors and new image) -->
+        <div id="startScreen" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 bg-opacity-90 z-40 p-4 md:p-6 text-center overflow-y-auto">
+            
+            <!-- Animated background elements for vibrant look -->
+            <div class="absolute top-10 left-10 w-72 h-72 bg-pink-500 rounded-full mix-blend-screen filter blur-[80px] opacity-40 animate-pulse"></div>
+            <div class="absolute bottom-10 right-10 w-80 h-80 bg-blue-500 rounded-full mix-blend-screen filter blur-[100px] opacity-40" style="animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;"></div>
+            <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500 rounded-full mix-blend-screen filter blur-[120px] opacity-20"></div>
+
+            <div class="bg-slate-800 bg-opacity-60 p-8 md:p-12 rounded-3xl border border-white/20 shadow-[0_0_50px_rgba(139,92,246,0.3)] max-w-4xl backdrop-blur-xl relative overflow-hidden z-10 my-auto">
+                
+                <div class="inline-block p-4 bg-gradient-to-br from-blue-400 to-purple-500 rounded-2xl mb-6 shadow-lg transform -rotate-3 hover:rotate-0 transition-transform duration-300">
+                    <i class="fa-solid fa-laptop-code text-5xl md:text-6xl text-white"></i>
+                </div>
+                
+                <h1 class="text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-purple-400 mb-4 drop-shadow-sm tracking-tight">
+                    Web Design Quest AR
+                </h1>
+                
+                <h2 class="text-xl md:text-2xl font-bold text-white mb-6 tracking-wide drop-shadow-md">
+                    เกมข้อสอบก่อนเรียนการออกแบบและพัฒนาเว็บ
+                </h2>
+                
+                <div class="w-32 h-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 mx-auto mb-6 rounded-full"></div>
+                
+                <p class="text-base md:text-lg text-slate-200 mb-8 max-w-2xl mx-auto leading-relaxed font-light">
+                    เกมนี้เป็นข้อสอบก่อนเรียนรายวิชาการออกแบบและพัฒนาเว็บ (101-23-02) จำนวน 30 ข้อ เพื่อประเมินความรู้พื้นฐานก่อนเข้าสู่บทเรียน 
+                    <br><br>
+                    <span class="inline-block px-4 py-2 bg-slate-900/50 rounded-xl text-amber-300 font-medium border border-amber-500/30">
+                        <i class="fa-solid fa-hand-pointer mr-2 animate-bounce"></i>ใช้การเคลื่อนไหวของนิ้วชี้ผ่านกล้อง Webcam เพื่อเลือกคำตอบ โดยไม่ต้องใช้เมาส์!
+                    </span>
+                </p>
+                
+                <button id="btnStart" class="interactive-element group relative px-10 py-5 font-bold text-xl md:text-2xl text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-full overflow-hidden shadow-[0_0_30px_rgba(79,70,229,0.5)] hover:shadow-[0_0_40px_rgba(79,70,229,0.8)] hover:scale-105 transition-all duration-300 focus:outline-none border border-white/20">
+                    <span class="absolute inset-0 w-full h-full -mt-1 rounded-lg opacity-30 bg-gradient-to-b from-transparent via-transparent to-black"></span>
+                    <span class="relative flex items-center justify-center gap-3">
+                        <i class="fa-solid fa-play text-xl group-hover:text-cyan-300 transition-colors"></i> เริ่มทำข้อสอบก่อนเรียน
+                    </span>
+                </button>
+            </div>
+
+            <!-- Footer: by Aummi (แก้ไขไม่ให้ซ้อนทับ เปลี่ยนจาก absolute เป็น relative ให้อยู่ใต้กรอบพอดี) -->
+            <div class="relative mt-6 mb-4 flex flex-col items-center z-10 shrink-0">
+                <div class="w-16 h-16 rounded-full border-4 border-white shadow-[0_0_15px_rgba(236,72,153,0.6)] overflow-hidden mb-2 bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center transform hover:scale-110 transition-transform duration-300">
+                    <img src="aum2.png" alt="Aummi Avatar" class="w-full h-full object-cover">
+                </div>
+                <p class="text-white text-base font-medium drop-shadow-md bg-black/40 px-4 py-1 rounded-full backdrop-blur-md">Created by <span class="text-pink-400 font-bold tracking-wide">Aummi</span></p>
+            </div>
+        </div>
+
+        <!-- Screen 3: In-Game HUD & Question -->
+        <div id="gameScreen" class="hidden absolute inset-0 flex flex-col justify-between p-4 md:p-8 z-30">
+            
+            <!-- Top HUD -->
+            <div class="flex justify-between items-center w-full px-4 py-3 bg-slate-800 bg-opacity-60 backdrop-blur-md rounded-2xl border border-slate-600 shadow-lg">
+                <!-- Score -->
+                <div class="flex flex-col items-center min-w-[120px]">
+                    <span class="text-slate-300 text-sm font-semibold uppercase tracking-wider">Score</span>
+                    <span id="scoreDisplay" class="text-3xl font-bold text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">0</span>
+                </div>
+                
+                <!-- Question Progress -->
+                <div class="flex flex-col items-center">
+                    <span class="text-slate-300 text-sm font-semibold uppercase tracking-wider">Question</span>
+                    <div class="text-2xl md:text-3xl font-bold text-white">
+                        <span id="questionCurrent">1</span> <span class="text-slate-500 mx-1">/</span> <span id="questionTotal" class="text-blue-400">30</span>
+                    </div>
+                </div>
+
+                <!-- Timer -->
+                <div class="flex flex-col items-center min-w-[120px]">
+                    <span class="text-slate-300 text-sm font-semibold uppercase tracking-wider">Time</span>
+                    <span id="timerDisplay" class="text-3xl font-bold text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]">00:00</span>
+                </div>
+            </div>
+
+            <!-- Question Area -->
+            <div class="flex-grow flex flex-col items-center justify-center w-full max-w-5xl mx-auto my-8">
+                <div class="w-full text-center px-6 py-8 bg-slate-800 bg-opacity-70 backdrop-blur-lg rounded-3xl border border-slate-600 shadow-2xl mb-10">
+                    <h2 id="questionText" class="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-tight drop-shadow-md">
+                        <!-- Question Text Here -->
+                    </h2>
+                </div>
+
+                <!-- Options Grid -->
+                <div id="optionsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full px-4">
+                    <!-- Options injected via JS -->
+                </div>
+            </div>
+
+            <!-- Bottom Feedback HUD -->
+            <div class="w-full text-center py-4 bg-slate-800 bg-opacity-60 backdrop-blur-md rounded-2xl border border-slate-600 shadow-lg relative overflow-hidden">
+                <div id="feedbackText" class="text-xl md:text-2xl font-semibold text-blue-300 flex items-center justify-center gap-3">
+                    <i class="fa-solid fa-hand-point-up animate-bounce"></i> เลื่อนปลายนิ้วชี้ไปค้างไว้ที่ตัวเลือกเพื่อตอบคำถาม
+                </div>
+            </div>
+        </div>
+
+        <!-- Screen 4: Results -->
+        <div id="resultScreen" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900 bg-opacity-90 z-50 p-6 text-center">
+            <div class="bg-slate-800 bg-opacity-90 p-10 rounded-3xl border border-slate-600 shadow-2xl max-w-3xl backdrop-blur-md w-full relative overflow-hidden">
+                
+                <i class="fa-solid fa-trophy text-7xl text-amber-400 mb-6 drop-shadow-[0_0_15px_rgba(251,191,36,0.8)]"></i>
+                
+                <h1 class="text-5xl font-bold text-white mb-4">สรุปผลคะแนนก่อนเรียน</h1>
+                
+                <div class="text-8xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 my-8 drop-shadow-lg">
+                    <span id="finalScore">0</span> <span class="text-4xl text-slate-400">/ 150</span>
+                </div>
+                
+                <p id="resultMessage" class="text-2xl text-slate-300 mb-10 leading-relaxed"></p>
+                
+                <button id="btnRestart" class="interactive-element px-10 py-4 font-bold text-xl text-slate-900 bg-white rounded-full shadow-lg hover:bg-slate-200 transition-all focus:outline-none flex items-center justify-center gap-3 mx-auto">
+                    <i class="fa-solid fa-rotate-right"></i> เล่นอีกครั้ง
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ---------------------------------------------------------
+        // 1. DATA: Questions Array (30 Questions - Mixed MCQs and True/False)
+        // ---------------------------------------------------------
+        const questions = [
+            {
+                q: "ข้อใดคือเป้าหมายหลักของการออกแบบ UX (User Experience) ในเว็บไซต์?",
+                options: ["ก. ทำให้เว็บไซต์มีสีสันสวยงามที่สุด", "ข. สร้างประสบการณ์และความพึงพอใจที่ดีแก่ผู้ใช้งาน", "ค. ทำให้เว็บไซต์ติดอันดับการค้นหาอันดับหนึ่ง", "ง. เพิ่มปริมาณโฆษณาในหน้าแรก"],
+                correct: 1
+            },
+            {
+                q: "หลักการออกแบบเว็บไซต์ที่ดี (Good Web Design) ควรคำนึงถึงสิ่งใดเป็นอันดับแรก?",
+                options: ["ก. ผู้ใช้งาน (User-Centered Design)", "ข. เทคโนโลยีล่าสุดเสมอ", "ค. ความซับซ้อนของโครงสร้าง", "ง. ขนาดของฐานข้อมูล"],
+                correct: 0
+            },
+            {
+                q: "โครงสร้างเว็บไซต์แบบลำดับขั้น (Hierarchical/Tree) เหมาะกับเว็บไซต์องค์กรขนาดใหญ่ที่มีข้อมูลแบ่งเป็นหลายหมวดหมู่",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 0
+            },
+            {
+                q: "Sitemap (แผนผังเว็บไซต์) มีประโยชน์อย่างไรในการพัฒนาเว็บ?",
+                options: ["ก. ใช้เพื่อทดสอบความเร็วอินเทอร์เน็ต", "ข. แสดงภาพกราฟิกทั้งหมดในเว็บ", "ค. แสดงโครงสร้างของหน้าเว็บทั้งหมดเพื่อให้ผู้ใช้และ Search Engine เข้าใจ", "ง. ใช้สำหรับเข้ารหัสข้อมูลสำคัญ"],
+                correct: 2
+            },
+            {
+                q: "Wireframe คือการออกแบบสีสันและลวดลายกราฟิกที่สวยงามที่สุดของเว็บไซต์ก่อนนำไปเขียนโค้ด",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 1
+            },
+            {
+                q: "การใช้ 'สีคู่ตรงข้าม' (Complementary Colors) ในการออกแบบเว็บ ช่วยในเรื่องใดมากที่สุด?",
+                options: ["ก. ทำให้เว็บไซต์ดูน่าเบื่อ", "ข. ทำให้โหลดหน้าเว็บได้เร็วขึ้น", "ค. สร้างความโดดเด่นและดึงดูดสายตาไปยังจุดที่ต้องการ", "ง. ป้องกันการโจรกรรมข้อมูล"],
+                correct: 2
+            },
+            {
+                q: "ข้อพิจารณาที่สำคัญที่สุดในการเลือกใช้ตัวอักษร (Typography) บนเว็บไซต์คืออะไร?",
+                options: ["ก. ต้องเป็นฟอนต์ที่แพงที่สุด", "ข. ความสามารถในการอ่านได้อย่างชัดเจน (Readability)", "ค. ต้องมีลวดลายวิจิตรตระการตา", "ง. ต้องใช้ฟอนต์มากกว่า 10 ชนิดในหน้าเดียว"],
+                correct: 1
+            },
+            {
+                q: "ปุ่มกด (Buttons) และเมนูนำทาง (Navigation) จัดว่าเป็นส่วนหนึ่งของ User Interface (UI)",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 0
+            },
+            {
+                q: "HTML ย่อมาจาก HyperText Markup Language เป็นมาตรฐานหลักสำหรับการกำหนดโครงสร้างเนื้อหาบนเว็บ",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 0
+            },
+            {
+                q: "ภาษาใดที่รับผิดชอบในการตกแต่งหน้าตา (Styling/Layout) ของเว็บไซต์ให้สวยงาม?",
+                options: ["ก. HTML", "ข. CSS", "ค. Python", "ง. C++"],
+                correct: 1
+            },
+            {
+                q: "หากต้องการให้ปุ่มบนเว็บไซต์มีปฏิสัมพันธ์ (Interactive) เช่น เมื่อคลิกแล้วมีกล่องข้อความเด้งขึ้นมา ควรใช้ภาษาใด?",
+                options: ["ก. HTML", "ข. CSS", "ค. JavaScript", "ง. SQL"],
+                correct: 2
+            },
+            {
+                q: "Responsive Web Design คือการออกแบบเว็บไซต์เพื่อให้รองรับการแสดงผลได้ดีในทุกขนาดหน้าจอและอุปกรณ์",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 0
+            },
+            {
+                q: "คำสั่ง HTML ใดที่จำเป็นอย่างยิ่งในการทำให้ Responsive Web ทำงานได้อย่างถูกต้องบนอุปกรณ์พกพา?",
+                options: ["ก. &lt;meta name='viewport' ...&gt;", "ข. &lt;link rel='stylesheet' ...&gt;", "ค. &lt;script src='...'&gt;&lt;/script&gt;", "ง. &lt;title&gt;Responsive&lt;/title&gt;"],
+                correct: 0
+            },
+            {
+                q: "ในการกำหนดขนาด Layout แบบ Responsive ควรใช้หน่วยวัดแบบใดมากกว่าการใช้ Pixel (px)?",
+                options: ["ก. นิ้ว (inch)", "ข. เซนติเมตร (cm)", "ค. เปอร์เซ็นต์ (%) หรือ Viewport (vw, vh)", "ง. มิลลิเมตร (mm)"],
+                correct: 2
+            },
+            {
+                q: "Tailwind CSS เป็น Framework ที่ช่วยให้การพัฒนา UI เร็วขึ้นโดยใช้คลาสที่กำหนดไว้ล่วงหน้า (Utility-first)",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 0
+            },
+            {
+                q: "W3C (World Wide Web Consortium) คือองค์กรที่กำหนดมาตรฐานเทคโนโลยีเว็บระดับสากล",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 0
+            },
+            {
+                q: "ส่วนหัวของหน้าเว็บที่มักประกอบด้วย โลโก้ และเมนูหลัก เรียกว่าอะไร?",
+                options: ["ก. Header", "ข. Footer", "ค. Sidebar", "ง. Article"],
+                correct: 0
+            },
+            {
+                q: "แท็ก &lt;nav&gt; ใน HTML5 มีไว้สำหรับจุดประสงค์ใด?",
+                options: ["ก. เล่นวิดีโอ", "ข. สร้างส่วนเชื่อมโยง หรือเมนูนำทาง (Navigation)", "ค. สร้างตารางเก็บข้อมูล", "ง. ขีดเส้นใต้ข้อความ"],
+                correct: 1
+            },
+            {
+                q: "การนำเว็บไซต์ขึ้นใช้งานจริง (Deployment) ควรทำเป็นขั้นตอนแรกสุดก่อนการออกแบบโครงสร้างเว็บไซต์",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 1
+            },
+            {
+                q: "ข้อใดคือการออกแบบ UI ที่คำนึงถึงความสามารถในการเข้าถึง (Accessibility)?",
+                options: ["ก. การใช้ข้อความสีเทาอ่อนบนพื้นสีขาว", "ข. การใส่คำอธิบายภาพ (alt text) ให้กับรูปภาพสำหรับผู้ที่มีความบกพร่องทางสายตา", "ค. การบังคับให้ผู้ใช้คลิกภายใน 2 วินาที", "ง. การใช้ฟอนต์ขนาด 8px"],
+                correct: 1
+            },
+            {
+                q: "FTP (File Transfer Protocol) มักถูกใช้ในขั้นตอนใดของการพัฒนาเว็บ?",
+                options: ["ก. ออกแบบฐานข้อมูล", "ข. อัปโหลดไฟล์เว็บไซต์ขึ้นสู่ Server (Hosting)", "ค. เขียนโค้ด HTML", "ง. แต่งภาพกราฟิก"],
+                correct: 1
+            },
+            {
+                q: "Domain Name คือชื่อที่อยู่ของเว็บไซต์ที่ใช้ในการเข้าถึงผ่านเบราว์เซอร์ เช่น google.com",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 0
+            },
+            {
+                q: "ข้อใดคือข้อดีของการทำ Prototype (ตัวต้นแบบ) ก่อนการเขียนโค้ดจริง?",
+                options: ["ก. ทำให้ไม่ต้องเขียนโค้ดเลย", "ข. ประหยัดค่าอินเทอร์เน็ต", "ค. ช่วยให้เห็นภาพรวมและทดสอบ Flow การใช้งานก่อนลงมือสร้างจริง", "ง. ช่วยให้ได้ Domain name ฟรี"],
+                correct: 2
+            },
+            {
+                q: "เครื่องมือ (Tools) ใดที่นิยมใช้ในการออกแบบ Wireframe และ UI Prototype มากที่สุดในปัจจุบัน?",
+                options: ["ก. Microsoft Word", "ข. Figma", "ค. Windows Notepad", "ง. Adobe Premiere Pro"],
+                correct: 1
+            },
+            {
+                q: "ในภาษา CSS Property 'color' ใช้สำหรับเปลี่ยนสีพื้นหลัง (Background) ของเว็บไซต์",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 1
+            },
+            {
+                q: "Library อย่าง React.js หรือ Vue.js มีจุดเด่นในเรื่องใดของการพัฒนาเว็บแอปพลิเคชัน?",
+                options: ["ก. การจัดการเอกสาร PDF", "ข. การสร้างฐานข้อมูลเชิงสัมพันธ์", "ค. การสร้าง User Interface และ Component ที่นำกลับมาใช้ใหม่ได้", "ง. การแต่งภาพ 3 มิติ"],
+                correct: 2
+            },
+            {
+                q: "Mobile-First Design คือแนวคิดใด?",
+                options: ["ก. การออกแบบเว็บสำหรับจอคอมพิวเตอร์ก่อน แล้วค่อยย่อขนาด", "ข. การออกแบบเว็บให้แสดงผลบนมือถือได้ดีที่สุดก่อน แล้วค่อยขยายไปยังจอใหญ่", "ค. การเขียนแอปมือถือแทนการทำเว็บไซต์", "ง. การแจกมือถือฟรีให้ผู้เข้าชมเว็บ"],
+                correct: 1
+            },
+            {
+                q: "Developer Tools (F12) ในเว็บบราวเซอร์ มีไว้สำหรับให้นักพัฒนาตรวจสอบโค้ดและทดสอบการทำงานของเว็บ",
+                options: ["ก. ถูก (True)", "ข. ผิด (False)"],
+                correct: 0
+            },
+            {
+                q: "White Space (พื้นที่ว่าง) ในการออกแบบเว็บ มีประโยชน์อย่างไร?",
+                options: ["ก. ทำให้เปลืองพื้นที่หน้าจอ", "ข. ช่วยให้องค์ประกอบบนหน้าเว็บดูไม่อึดอัด และอ่านง่ายขึ้น", "ค. เป็นจุดซ่อนไวรัส", "ง. ทำให้โหลดช้าลง"],
+                correct: 1
+            },
+            {
+                q: "หากพบว่าเว็บไซต์แสดงผลได้ดีบน Chrome แต่พังบน Safari ปัญหานี้เรียกว่าอะไร?",
+                options: ["ก. Database Error", "ข. Cross-Browser Compatibility Issue", "ค. Server Timeout", "ง. Network Disconnect"],
+                correct: 1
+            }
+        ];
+
+        // ---------------------------------------------------------
+        // 2. STATE MANAGEMENT
+        // ---------------------------------------------------------
+        const GameState = {
+            LOADING: 0,
+            START_SCREEN: 1,
+            PLAYING: 2,
+            EVALUATING: 3, // Paused while showing correct/incorrect
+            RESULT: 4
+        };
+
+        let currentState = GameState.LOADING;
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let timeSeconds = 0;
+        let timerInterval = null;
+
+        // AR Interaction Variables
+        let hoveredElement = null;
+        let dwellTime = 0;
+        const DWELL_THRESHOLD = 40; // Approx 1.2 seconds at 30fps
+
+        // DOM Elements
+        const screens = {
+            loading: document.getElementById('loadingScreen'),
+            start: document.getElementById('startScreen'),
+            game: document.getElementById('gameScreen'),
+            result: document.getElementById('resultScreen')
+        };
+        const arCursor = document.getElementById('arCursor');
+        const arCursorProgress = document.getElementById('arCursorProgress');
+        const feedbackText = document.getElementById('feedbackText');
+        const optionsContainer = document.getElementById('optionsContainer');
+
+        // ---------------------------------------------------------
+        // 3. AUDIO SYSTEM (Web Audio API)
+        // ---------------------------------------------------------
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Ensure AudioContext is running (requires user interaction)
+        function initAudio() {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // LOUD Error Sound (Requested by user)
+        function playErrorSound() {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                // Harsh sawtooth wave
+                osc.type = 'sawtooth';
+                
+                // Discordant frequencies
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.3);
+                
+                // Very loud initially, sharp decay
+                gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } catch(e) { console.error("Audio error", e); }
+        }
+
+        // Pleasant Success Sound
+        function playSuccessSound() {
+            try {
+                const now = audioCtx.currentTime;
+                // Play a quick arpeggio (C major chord)
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, index) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    
+                    gain.gain.setValueAtTime(0, now + (index * 0.1));
+                    gain.gain.linearRampToValueAtTime(0.3, now + (index * 0.1) + 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + (index * 0.1) + 0.3);
+                    
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    
+                    osc.start(now + (index * 0.1));
+                    osc.stop(now + (index * 0.1) + 0.4);
+                });
+            } catch(e) { console.error("Audio error", e); }
+        }
+
+        function playTickSound() {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.1);
+            } catch(e) {}
+        }
+
+
+        // ---------------------------------------------------------
+        // 4. GAME LOGIC
+        // ---------------------------------------------------------
+
+        function switchScreen(screenName) {
+            Object.values(screens).forEach(s => s.classList.add('hidden'));
+            screens[screenName].classList.remove('hidden');
+        }
+
+        function formatTime(totalSeconds) {
+            const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+            const s = (totalSeconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function startGame() {
+            initAudio(); // Resume audio on first interaction
+            currentQuestionIndex = 0;
+            score = 0;
+            timeSeconds = 0;
+            document.getElementById('scoreDisplay').innerText = score;
+            
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeSeconds++;
+                document.getElementById('timerDisplay').innerText = formatTime(timeSeconds);
+            }, 1000);
+
+            // Change camera view from dark to clear
+            document.getElementById('cameraCanvas').style.filter = "brightness(0.7) blur(0px)";
+            
+            currentState = GameState.PLAYING;
+            switchScreen('game');
+            loadQuestion();
+        }
+
+        const optionLabels = ["A", "B", "C", "D"];
+
+        function loadQuestion() {
+            const q = questions[currentQuestionIndex];
+            document.getElementById('questionCurrent').innerText = currentQuestionIndex + 1;
+            document.getElementById('questionText').innerText = q.q;
+            
+            optionsContainer.innerHTML = '';
+            
+            // Adjust layout based on number of options (4 options vs 2 options for T/F)
+            if (q.options.length === 2) {
+                optionsContainer.className = "flex flex-col md:flex-row justify-center gap-6 w-full px-4 max-w-3xl mx-auto";
+            } else {
+                optionsContainer.className = "grid grid-cols-1 md:grid-cols-2 gap-6 w-full px-4";
+            }
+            
+            q.options.forEach((opt, idx) => {
+                const btn = document.createElement('div');
+                // Added flex-1 and min-w to make T/F buttons look nice and balanced
+                btn.className = "option-card interactive-element group flex-1 min-w-[250px]";
+                btn.dataset.index = idx;
+                
+                // For True/False, we might just want to use check/cross icons instead of A/B, but A/B works fine too.
+                const label = q.options.length === 2 ? (idx === 0 ? "✓" : "✗") : optionLabels[idx];
+                const labelColor = q.options.length === 2 ? (idx === 0 ? "text-emerald-400 group-hover:text-white" : "text-red-400 group-hover:text-white") : "text-white";
+                
+                btn.innerHTML = `
+                    <div class="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center text-xl font-bold ${labelColor} mr-4 shadow-inner group-hover:bg-blue-500 transition-colors">
+                        ${label}
+                    </div>
+                    <div class="text-lg md:text-xl font-medium flex-1 text-left">
+                        ${opt}
+                    </div>
+                `;
+                
+                // Allow mouse click for testing fallback, though primary is AR
+                btn.addEventListener('click', () => handleAnswer(idx));
+                optionsContainer.appendChild(btn);
+            });
+
+            feedbackText.innerHTML = '<i class="fa-solid fa-hand-point-up animate-bounce"></i> เลื่อนปลายนิ้วชี้ไปค้างไว้ที่ตัวเลือกเพื่อตอบคำถาม';
+            feedbackText.className = "text-xl md:text-2xl font-semibold text-blue-300 flex items-center justify-center gap-3";
+            currentState = GameState.PLAYING;
+        }
+
+        function handleAnswer(selectedIndex) {
+            if (currentState !== GameState.PLAYING) return;
+            currentState = GameState.EVALUATING;
+            
+            const q = questions[currentQuestionIndex];
+            const isCorrect = (selectedIndex === q.correct);
+            const cards = optionsContainer.children;
+            const selectedCard = cards[selectedIndex];
+
+            if (isCorrect) {
+                // Correct Flow
+                selectedCard.classList.add('correct');
+                playSuccessSound();
+                createConfetti();
+                score += 5;
+                document.getElementById('scoreDisplay').innerText = score;
+                
+                feedbackText.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-400"></i> ถูกต้อง! (Excellent!)';
+                feedbackText.className = "text-2xl md:text-3xl font-bold text-emerald-400 flex items-center justify-center gap-3 drop-shadow-md";
+            } else {
+                // Incorrect Flow
+                selectedCard.classList.add('incorrect');
+                playErrorSound();
+                
+                feedbackText.innerHTML = '<i class="fa-solid fa-circle-xmark text-red-400"></i> ยังไม่ถูกต้อง (Try Again)';
+                feedbackText.className = "text-2xl md:text-3xl font-bold text-red-400 flex items-center justify-center gap-3 drop-shadow-md";
+                // Note: Not revealing correct answer as requested for pre-test
+            }
+
+            // Wait 1.2s then next
+            setTimeout(() => {
+                currentQuestionIndex++;
+                if (currentQuestionIndex < questions.length) {
+                    loadQuestion();
+                } else {
+                    endGame();
+                }
+            }, 1200);
+        }
+
+        function endGame() {
+            clearInterval(timerInterval);
+            currentState = GameState.RESULT;
+            document.getElementById('finalScore').innerText = score;
+            
+            let msg = "";
+            let colorClass = "";
+            if (score >= 120) { msg = "ยอดเยี่ยมมาก! คุณมีความพร้อมเข้าสู่บทเรียนสูงมาก"; colorClass="text-emerald-400"; }
+            else if (score >= 80) { msg = "เก่งมาก! คุณมีความรู้พื้นฐานดี"; colorClass="text-blue-400"; }
+            else { msg = "ไม่ต้องกังวล! เราจะเรียนรู้สิ่งเหล่านี้ไปด้วยกันในวิชานี้"; colorClass="text-amber-400"; }
+            
+            const msgEl = document.getElementById('resultMessage');
+            msgEl.innerText = msg;
+            msgEl.className = `text-2xl mb-10 leading-relaxed font-bold ${colorClass}`;
+            
+            document.getElementById('cameraCanvas').style.filter = "brightness(0.3) blur(5px)";
+            switchScreen('result');
+            createConfetti(100); // Big explosion
+        }
+
+        // ---------------------------------------------------------
+        // 5. VISUAL EFFECTS (Canvas 2)
+        // ---------------------------------------------------------
+        const effectsCanvas = document.getElementById('effectsCanvas');
+        const effCtx = effectsCanvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvases() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            
+            const camCanvas = document.getElementById('cameraCanvas');
+            camCanvas.width = w;
+            camCanvas.height = h;
+            
+            effectsCanvas.width = w;
+            effectsCanvas.height = h;
+        }
+        window.addEventListener('resize', resizeCanvases);
+        resizeCanvases();
+
+        function createConfetti(amount = 40) {
+            for (let i = 0; i < amount; i++) {
+                particles.push({
+                    x: window.innerWidth / 2,
+                    y: window.innerHeight / 2,
+                    vx: (Math.random() - 0.5) * 20,
+                    vy: (Math.random() - 0.5) * 20 - 5,
+                    size: Math.random() * 8 + 4,
+                    color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                    gravity: 0.5,
+                    life: 1.0,
+                    decay: Math.random() * 0.02 + 0.01
+                });
+            }
+        }
+
+        function drawEffects() {
+            effCtx.clearRect(0, 0, effectsCanvas.width, effectsCanvas.height);
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += p.gravity;
+                p.life -= p.decay;
+
+                effCtx.globalAlpha = p.life;
+                effCtx.fillStyle = p.color;
+                effCtx.fillRect(p.x, p.y, p.size, p.size);
+
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+            effCtx.globalAlpha = 1.0;
+            requestAnimationFrame(drawEffects);
+        }
+        drawEffects();
+
+        // ---------------------------------------------------------
+        // 6. MEDIAPIPE & AR INTERACTION
+        // ---------------------------------------------------------
+        
+        const videoElement = document.getElementById('inputVideo');
+        const canvasElement = document.getElementById('cameraCanvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function onResults(results) {
+            // 1. Draw Camera and Skeleton
+            canvasCtx.save();
+            // Clear canvas
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // Draw video frame
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            // Draw Hand Landmarks
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    // Draw skeleton using drawing_utils
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(255, 255, 255, 0.5)', lineWidth: 3});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#3b82f6', lineWidth: 1, radius: 3});
+
+                    // 2. Process Interaction with Index Finger Tip (Landmark 8)
+                    const indexFingerTip = landmarks[8];
+                    
+                    if (indexFingerTip) {
+                        // IMPORTANT: The canvas output is horizontally mirrored via CSS `transform: scaleX(-1)`.
+                        // MediaPipe provides coordinates normalized (0 to 1) from the ORIGINAL unmirrored image.
+                        // To map this to our UI elements (which are NOT mirrored), we must invert the X coordinate.
+                        const screenX = (1 - indexFingerTip.x) * window.innerWidth;
+                        const screenY = indexFingerTip.y * window.innerHeight;
+
+                        // Move AR Cursor visually
+                        arCursor.style.left = `${screenX}px`;
+                        arCursor.style.top = `${screenY}px`;
+                        arCursor.classList.remove('hidden');
+
+                        processARHover(screenX, screenY);
+                    }
+                }
+            } else {
+                // No hands detected
+                arCursor.classList.add('hidden');
+                resetDwell();
+            }
+            canvasCtx.restore();
+        }
+
+        function processARHover(x, y) {
+            // Only process interaction during Start Screen, Playing, or Result
+            if (currentState === GameState.LOADING || currentState === GameState.EVALUATING) {
+                resetDwell();
+                return;
+            }
+
+            // Find interactive element under the finger
+            // Hide cursor temporarily so elementFromPoint doesn't hit the cursor itself
+            arCursor.style.display = 'none';
+            const elements = document.elementsFromPoint(x, y);
+            arCursor.style.display = 'block';
+
+            const target = elements.find(el => el.classList.contains('interactive-element'));
+
+            if (target) {
+                if (hoveredElement === target) {
+                    // Continue dwelling
+                    dwellTime++;
+                    
+                    // Visual feedback for dwelling (CSS animation handles spin, we just add class)
+                    if(dwellTime === 1) {
+                        arCursor.classList.add('loading');
+                        playTickSound();
+                    }
+
+                    // Click triggered
+                    if (dwellTime >= DWELL_THRESHOLD) {
+                        triggerClick(target);
+                        resetDwell();
+                    }
+                } else {
+                    // Hovered a new element
+                    if (hoveredElement) hoveredElement.classList.remove('hover-active');
+                    hoveredElement = target;
+                    hoveredElement.classList.add('hover-active');
+                    resetDwell();
+                }
+            } else {
+                // Moved off interactive elements
+                if (hoveredElement) hoveredElement.classList.remove('hover-active');
+                hoveredElement = null;
+                resetDwell();
+            }
+        }
+
+        function resetDwell() {
+            dwellTime = 0;
+            arCursor.classList.remove('loading');
+            // Hack to reset CSS animation
+            void arCursor.offsetWidth; 
+        }
+
+        function triggerClick(element) {
+            // Haptic/Visual burst
+            element.classList.add('scale-95');
+            setTimeout(() => element.classList.remove('scale-95'), 100);
+
+            // Execute logic based on element
+            if (element.id === 'btnStart') {
+                startGame();
+            } else if (element.id === 'btnRestart') {
+                switchScreen('startScreen');
+                currentState = GameState.START_SCREEN;
+                // reset styling
+                document.getElementById('cameraCanvas').style.filter = "brightness(0.4) blur(2px)";
+            } else if (element.classList.contains('option-card')) {
+                const index = parseInt(element.dataset.index);
+                handleAnswer(index);
+            }
+        }
+
+
+        // ---------------------------------------------------------
+        // 7. INITIALIZE APP
+        // ---------------------------------------------------------
+        
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        
+        hands.setOptions({
+            maxNumHands: 1, // Track 1 hand for better performance
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+
+        // Start Camera and Transition to Start Screen
+        // ตรวจสอบว่าเป็น HTTPS หรือไม่
+        if (!window.isSecureContext) {
+            document.getElementById('loadingScreen').innerHTML = `
+                <div class="text-amber-500 text-6xl mb-4"><i class="fa-solid fa-lock-open"></i></div>
+                <h2 class="text-3xl font-bold text-white mb-2">จำเป็นต้องใช้การเชื่อมต่อที่ปลอดภัย</h2>
+                <p class="text-slate-300 text-lg">เบราว์เซอร์ไม่อนุญาตให้เปิดกล้องผ่าน HTTP<br>โปรดเปลี่ยน URL ด้านบนจาก <b>http://</b> เป็น <b class="text-emerald-400">https://</b></p>
+                <button onclick="window.location.protocol='https:'" class="mt-6 px-8 py-3 bg-emerald-600 text-white rounded-full font-bold hover:bg-emerald-500 transition shadow-lg">
+                    <i class="fa-solid fa-shield-halved mr-2"></i> เปลี่ยนเป็น HTTPS อัตโนมัติ
+                </button>
+            `;
+        } else {
+            camera.start()
+                .then(() => {
+                    console.log("Camera started");
+                    currentState = GameState.START_SCREEN;
+                    switchScreen('start');
+                })
+                .catch((err) => {
+                    console.error("Error starting camera: ", err);
+                    document.getElementById('loadingScreen').innerHTML = `
+                        <div class="text-red-500 text-6xl mb-4"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                        <h2 class="text-3xl font-bold text-white mb-2">ไม่สามารถเข้าถึงกล้องได้</h2>
+                        <p class="text-slate-300 text-lg">โปรดตรวจสอบการอนุญาตใช้งาน Webcam ในเบราว์เซอร์ของคุณ<br>และรีเฟรชหน้าเว็บอีกครั้ง</p>
+                        <p class="text-sm text-slate-500 mt-4 bg-black/30 p-2 rounded max-w-lg mx-auto">Error details: ${err.message || err}</p>
+                    `;
+                });
+        }
+
+        // Event Listeners for mouse fallback (Testing purposes)
+        document.getElementById('btnStart').addEventListener('click', startGame);
+        document.getElementById('btnRestart').addEventListener('click', () => {
+            switchScreen('start');
+            currentState = GameState.START_SCREEN;
+            document.getElementById('cameraCanvas').style.filter = "brightness(0.4) blur(2px)";
+        });
+
+    </script>
+</body>
+</html>
