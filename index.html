@@ -2,41 +2,48 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Web Design Quest AR - Pre-test Website Design</title>
     
+    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Load MediaPipe Hands & Camera Utils -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Prompt:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Load Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Prompt:wght@300;400;500;700;800&display=swap" rel="stylesheet">
 
     <style>
         body {
             font-family: 'Prompt', 'Inter', sans-serif;
             margin: 0;
+            padding: 0;
             overflow: hidden;
-            background-color: #0f172a; /* Fallback background */
+            background-color: #0f172a; /* Fallback color */
+            touch-action: manipulation; /* Prevent zoom on double tap */
         }
         
-        /* Glassmorphism Classes */
+        /* Glassmorphism Components */
         .glass-panel {
-            background: rgba(15, 23, 42, 0.65);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
         }
 
         .glass-card {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(8px);
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
+            -webkit-backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.2s ease-out;
         }
 
-        /* Video and Canvas Setup */
         .camera-container {
             position: absolute;
             top: 0;
@@ -44,17 +51,19 @@
             width: 100vw;
             height: 100vh;
             z-index: 1;
+            background-color: #000;
         }
         
+        /* HIDDEN original video, MUST have playsinline and muted for mobile autoplay */
         video.input_video {
-            display: none; /* Hide original video, draw on canvas instead */
+            display: none; 
         }
         
         canvas.output_canvas {
             width: 100vw;
             height: 100vh;
             object-fit: cover;
-            transform: scaleX(-1); /* Mirror display */
+            transform: scaleX(-1); /* Mirror display to act like a real mirror */
         }
 
         #confetti-canvas {
@@ -67,7 +76,6 @@
             z-index: 50;
         }
 
-        /* UI Overlay Layer */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -77,34 +85,31 @@
             z-index: 10;
             display: flex;
             flex-direction: column;
-            pointer-events: none; /* Let clicks pass through if needed, but elements inside will handle pointer */
+            pointer-events: none; /* Let touches pass through to UI elements */
         }
         
         .pointer-auto {
             pointer-events: auto;
         }
 
-        /* Animations */
         @keyframes pulse-green {
-            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); background-color: rgba(34, 197, 94, 0.8); border-color: #4ade80; }
-            70% { box-shadow: 0 0 20px 15px rgba(34, 197, 94, 0); background-color: rgba(34, 197, 94, 0.9); border-color: #86efac; }
-            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); background-color: rgba(34, 197, 94, 0.8); border-color: #4ade80; }
+            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); background-color: rgba(34, 197, 94, 0.3); border-color: #4ade80; transform: scale(1.05); }
+            70% { box-shadow: 0 0 30px 20px rgba(34, 197, 94, 0); background-color: rgba(34, 197, 94, 0.5); border-color: #86efac; transform: scale(1.1); }
+            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); background-color: rgba(34, 197, 94, 0.3); border-color: #4ade80; transform: scale(1.05); }
         }
         
         @keyframes shake-red {
-            0%, 100% { transform: translateX(0); background-color: rgba(239, 68, 68, 0.8); border-color: #f87171; }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); background-color: rgba(220, 38, 38, 0.9); }
-            20%, 40%, 60%, 80% { transform: translateX(10px); background-color: rgba(220, 38, 38, 0.9); }
+            0%, 100% { transform: translateX(0) scale(1.05); background-color: rgba(239, 68, 68, 0.4); border-color: #f87171; }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px) scale(1.05); background-color: rgba(220, 38, 38, 0.6); }
+            20%, 40%, 60%, 80% { transform: translateX(10px) scale(1.05); background-color: rgba(220, 38, 38, 0.6); }
         }
 
         .correct-answer {
-            animation: pulse-green 1.2s ease-out;
-            color: white !important;
+            animation: pulse-green 1s ease-out forwards;
         }
 
         .wrong-answer {
-            animation: shake-red 0.5s ease-in-out;
-            color: white !important;
+            animation: shake-red 0.5s ease-in-out forwards;
         }
 
         .loading-dot:after {
@@ -119,10 +124,11 @@
         }
     </style>
 </head>
-<body class="text-white">
+<body class="text-white selection:bg-blue-500/30">
 
     <div class="camera-container">
-        <video class="input_video" autoplay playsinline></video>
+        <!-- added 'muted' to ensure autoplay works on mobile browsers -->
+        <video class="input_video" autoplay playsinline muted></video>
         <canvas class="output_canvas"></canvas>
     </div>
     <canvas id="confetti-canvas"></canvas>
@@ -130,117 +136,133 @@
     <div id="ui-layer">
         
         <!-- START SCREEN -->
-        <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 z-50 transition-opacity duration-500 pointer-auto">
-            <div class="glass-panel p-10 rounded-3xl max-w-2xl text-center">
-                <div class="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-500/50">
-                    <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+        <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm z-50 transition-opacity duration-500 pointer-auto px-4">
+            <div class="glass-panel p-6 sm:p-10 rounded-[2rem] w-full max-w-2xl text-center shadow-2xl border-t border-white/20">
+                <div class="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(59,130,246,0.6)]">
+                    <svg class="w-10 h-10 sm:w-12 sm:h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                 </div>
-                <h1 class="text-4xl md:text-5xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">Web Design Quest AR</h1>
-                <h2 class="text-xl md:text-2xl font-semibold mb-6 text-gray-300">Pre-test Website Design and Development</h2>
-                <p class="text-lg text-gray-400 mb-8 leading-relaxed">
-                    เกมนี้เป็นข้อสอบก่อนเรียนรายวิชาการออกแบบและพัฒนาเว็บ จำนวน 30 ข้อ เพื่อประเมินความรู้พื้นฐานก่อนเข้าสู่บทเรียน<br>
-                    <span class="text-blue-300 font-medium">ใช้ปลายนิ้วชี้ของคุณแตะเลือกคำตอบบนหน้าจอโดยไม่ต้องใช้เมาส์!</span>
-                </p>
+                <h1 class="text-3xl sm:text-5xl font-extrabold mb-3 text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-300 tracking-tight">Web Design Quest AR</h1>
+                <h2 class="text-lg sm:text-xl font-semibold mb-6 text-gray-200">Pre-test Website Design and Development</h2>
                 
-                <div id="loading-indicator" class="text-blue-400 text-xl font-semibold mb-6 h-8">
-                    กำลังเตรียมระบบกล้องและ AI<span class="loading-dot"></span>
+                <div class="bg-black/30 rounded-2xl p-4 mb-8 text-sm sm:text-base text-gray-300 leading-relaxed border border-white/10 text-left">
+                    <p class="mb-3 text-center">เกมข้อสอบก่อนเรียนวิชาการออกแบบและพัฒนาเว็บ จำนวน 30 ข้อ (แบบ ถูก/ผิด)</p>
+                    <div class="flex items-start gap-3">
+                        <span class="text-2xl">👉</span>
+                        <p><strong>วิธีเล่น:</strong> ขยับมือของคุณบนหน้ากล้อง เลื่อนวงกลมไปวางเหนือปุ่มคำตอบที่ต้องการ จากนั้น <strong class="text-yellow-300">"จีบนิ้วโป้งและนิ้วชี้เข้าหากัน"</strong> เพื่อยืนยันคำตอบ</p>
+                    </div>
+                </div>
+                
+                <div id="loading-indicator" class="text-blue-300 text-base sm:text-lg font-medium mb-4 h-8">
+                    กำลังเปิดกล้องและโหลดระบบ AI<span class="loading-dot"></span>
                 </div>
 
-                <button id="start-btn" class="hidden pointer-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-4 px-10 rounded-full text-2xl shadow-[0_0_20px_rgba(59,130,246,0.5)] transform transition hover:scale-105 active:scale-95">
-                    เริ่มทำข้อสอบก่อนเรียน
+                <button id="start-btn" class="hidden pointer-auto w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 px-10 rounded-full text-xl shadow-[0_0_20px_rgba(79,70,229,0.5)] transform transition active:scale-95 border border-blue-400/30">
+                    เริ่มทำข้อสอบ
                 </button>
             </div>
             
-            <!-- Author Footer for Start Screen -->
-            <div class="absolute bottom-8 flex flex-col items-center">
-                <img src="https://placehold.co/100x100/3b82f6/white?text=Aummi" alt="Author" class="rounded-full w-14 h-14 border-2 border-white/50 shadow-lg mb-2">
-                <span class="text-sm text-gray-400 font-medium tracking-wider uppercase">by Aummi</span>
+            <div class="absolute bottom-6 flex flex-col items-center">
+                <img src="aum2.png" alt="Author" class="rounded-full w-12 h-12 border-2 border-white/50 shadow-lg mb-2">
+                <span class="text-xs text-gray-300 font-medium tracking-widest uppercase">by Aummi</span>
             </div>
         </div>
 
         <!-- GAME SCREEN -->
-        <div id="game-screen" class="hidden w-full h-full flex-col justify-between p-2 sm:p-6">
+        <div id="game-screen" class="hidden w-full h-full flex-col justify-between p-3 sm:p-6 pb-8 sm:pb-6">
             
             <!-- Top HUD -->
-            <div class="flex justify-between items-start w-full pointer-auto scale-90 sm:scale-100 origin-top">
-                <div class="glass-panel px-4 py-2 sm:px-6 sm:py-3 rounded-2xl flex items-center gap-2 sm:gap-3">
-                    <svg class="w-6 h-6 sm:w-8 sm:h-8 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+            <div class="flex justify-between items-start w-full pointer-auto">
+                <!-- Score -->
+                <div class="glass-panel px-3 py-2 sm:px-5 sm:py-3 rounded-2xl flex items-center gap-2">
+                    <svg class="w-5 h-5 sm:w-7 sm:h-7 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
                     <div>
-                        <div class="text-[10px] sm:text-xs text-gray-400 uppercase tracking-widest">Score</div>
-                        <div id="score-display" class="text-xl sm:text-2xl font-bold text-yellow-400">0</div>
+                        <div class="text-[9px] sm:text-[10px] text-gray-300 uppercase tracking-widest">Score</div>
+                        <div id="score-display" class="text-lg sm:text-xl font-black text-yellow-400 leading-none">0</div>
                     </div>
                 </div>
 
-                <div class="glass-panel px-6 py-2 sm:px-8 sm:py-3 rounded-2xl text-center mx-2">
-                    <div class="text-[10px] sm:text-xs text-gray-400 uppercase tracking-widest mb-1">Question</div>
-                    <div id="question-number" class="text-xl sm:text-2xl font-bold text-white">1 / 30</div>
+                <!-- Question Counter -->
+                <div class="glass-panel px-4 py-2 sm:px-6 sm:py-3 rounded-2xl text-center border-t border-blue-400/30">
+                    <div class="text-[9px] sm:text-[10px] text-gray-300 uppercase tracking-widest mb-0.5">Question</div>
+                    <div id="question-number" class="text-base sm:text-xl font-bold text-white leading-none">1 / 30</div>
                 </div>
 
-                <div class="glass-panel px-4 py-2 sm:px-6 sm:py-3 rounded-2xl flex items-center gap-2 sm:gap-3">
-                    <div>
-                        <div class="text-[10px] sm:text-xs text-gray-400 uppercase tracking-widest text-right">Time</div>
-                        <div id="timer-display" class="text-xl sm:text-2xl font-bold text-blue-400">00:00</div>
+                <!-- Timer -->
+                <div class="glass-panel px-3 py-2 sm:px-5 sm:py-3 rounded-2xl flex items-center gap-2">
+                    <div class="text-right">
+                        <div class="text-[9px] sm:text-[10px] text-gray-300 uppercase tracking-widest">Time</div>
+                        <div id="timer-display" class="text-lg sm:text-xl font-black text-blue-300 leading-none">00:00</div>
                     </div>
-                    <svg class="w-6 h-6 sm:w-8 sm:h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <svg class="w-5 h-5 sm:w-7 sm:h-7 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </div>
             </div>
 
-            <!-- Question Area -->
-            <div class="flex flex-col items-center flex-grow justify-center mt-2 sm:mt-4 w-full">
-                <div class="glass-panel px-6 py-6 sm:px-10 sm:py-8 rounded-3xl w-full max-w-4xl text-center mb-6 shadow-2xl">
-                    <h2 id="question-text" class="text-xl sm:text-3xl md:text-4xl font-bold text-white leading-snug drop-shadow-md">
-                        กำลังโหลดคำถาม...
+            <!-- Question Area & True/False Buttons -->
+            <div class="flex flex-col items-center justify-center flex-grow w-full mt-2 sm:mt-0 gap-4 sm:gap-8">
+                
+                <!-- Question Card -->
+                <div class="glass-panel p-5 sm:p-10 rounded-[2rem] w-full max-w-4xl text-center shadow-2xl relative overflow-hidden">
+                    <div class="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl"></div>
+                    <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl"></div>
+                    
+                    <h2 id="question-text" class="text-xl sm:text-3xl md:text-4xl font-semibold text-white leading-snug drop-shadow-lg relative z-10">
+                        กำลังเตรียมคำถาม...
                     </h2>
                 </div>
 
-                <!-- Answer Choices (True/False) -->
+                <!-- True / False Controls -->
                 <div class="flex flex-row gap-4 sm:gap-8 w-full max-w-2xl pointer-auto justify-center px-2">
-                    <!-- ทายถูก (True) -->
-                    <div id="btn-0" class="choice-btn glass-card rounded-3xl p-4 sm:p-8 cursor-pointer flex flex-col items-center justify-center shadow-lg w-1/2 border-green-500/30 transition-all" data-index="0">
-                        <div class="w-12 h-12 sm:w-20 sm:h-20 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center text-3xl sm:text-5xl mb-2 sm:mb-4 shadow-inner">
+                    
+                    <!-- btn-0 = ถูก (True) -->
+                    <div id="btn-0" class="choice-btn glass-card rounded-[2rem] p-4 sm:p-8 cursor-pointer flex flex-col items-center justify-center w-1/2 border-b-4 border-b-green-500/50 hover:bg-white/10" data-index="0">
+                        <div class="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center text-3xl sm:text-5xl mb-2 sm:mb-4 shadow-[inset_0_2px_10px_rgba(34,197,94,0.3)]">
                             <svg class="w-8 h-8 sm:w-12 sm:h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                         </div>
-                        <span class="text-2xl sm:text-3xl font-bold text-white drop-shadow">ถูก</span>
+                        <span class="text-2xl sm:text-4xl font-bold text-white tracking-wide">ถูก</span>
                     </div>
-                    <!-- ทายผิด (False) -->
-                    <div id="btn-1" class="choice-btn glass-card rounded-3xl p-4 sm:p-8 cursor-pointer flex flex-col items-center justify-center shadow-lg w-1/2 border-red-500/30 transition-all" data-index="1">
-                        <div class="w-12 h-12 sm:w-20 sm:h-20 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center text-3xl sm:text-5xl mb-2 sm:mb-4 shadow-inner">
+
+                    <!-- btn-1 = ผิด (False) -->
+                    <div id="btn-1" class="choice-btn glass-card rounded-[2rem] p-4 sm:p-8 cursor-pointer flex flex-col items-center justify-center w-1/2 border-b-4 border-b-red-500/50 hover:bg-white/10" data-index="1">
+                        <div class="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center text-3xl sm:text-5xl mb-2 sm:mb-4 shadow-[inset_0_2px_10px_rgba(239,68,68,0.3)]">
                             <svg class="w-8 h-8 sm:w-12 sm:h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </div>
-                        <span class="text-2xl sm:text-3xl font-bold text-white drop-shadow">ผิด</span>
+                        <span class="text-2xl sm:text-4xl font-bold text-white tracking-wide">ผิด</span>
                     </div>
+
                 </div>
             </div>
 
-            <!-- Bottom Feedback & Footer -->
-            <div class="flex flex-col sm:flex-row justify-between items-center sm:items-end w-full mt-4 sm:mt-0">
-                <div class="hidden sm:block w-1/4"></div> <!-- Spacer -->
-                
-                <div id="feedback-panel" class="glass-panel px-4 py-2 sm:px-8 sm:py-4 rounded-full text-center mb-2 sm:mb-4 transition-all duration-300 transform w-[90%] sm:w-1/2">
-                    <p id="feedback-text" class="text-sm sm:text-xl font-bold text-yellow-300">
-                        🤏 เลื่อนมือไปที่คำตอบ แล้วจีบนิ้วโป้งและนิ้วชี้เข้าหากัน 🤏
+            <!-- Bottom Instruction & Author -->
+            <div class="flex flex-col items-center justify-end w-full mt-auto relative">
+                <div id="feedback-panel" class="glass-panel px-6 py-3 rounded-full text-center transition-all duration-300 transform scale-100 shadow-[0_0_20px_rgba(0,0,0,0.3)] border-yellow-500/30">
+                    <p id="feedback-text" class="text-sm sm:text-lg font-bold text-yellow-300 flex items-center gap-2">
+                        <span>🤏</span> เลื่อนมือทับปุ่ม แล้ว <b>จีบนิ้ว</b> เพื่อตอบ
                     </p>
-                </div>
-
-                <div class="flex flex-col items-center sm:w-1/4 pb-2 sm:pb-4">
-                    <img src="https://placehold.co/100x100/3b82f6/white?text=Aummi" alt="Author" class="rounded-full w-8 h-8 sm:w-12 sm:h-12 border-2 border-white/50 shadow-lg mb-1">
-                    <span class="text-[10px] sm:text-xs text-gray-400 font-medium tracking-wider uppercase">by Aummi</span>
                 </div>
             </div>
         </div>
 
         <!-- END SCREEN -->
-        <div id="end-screen" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900/95 z-50 pointer-auto">
-            <div class="glass-panel p-12 rounded-3xl max-w-2xl text-center w-full mx-4">
-                <h1 class="text-5xl font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">ทดสอบเสร็จสิ้น!</h1>
-                <p class="text-2xl text-gray-300 mb-2">คะแนนรวมของคุณคือ</p>
-                <div class="text-8xl font-black text-white mb-8 drop-shadow-[0_0_20px_rgba(250,204,21,0.6)]">
-                    <span id="final-score">0</span><span class="text-4xl text-gray-400">/150</span>
-                </div>
-                <p class="text-xl text-blue-300 mb-10">เตรียมพร้อมเข้าสู่บทเรียน "การออกแบบและพัฒนาเว็บ" ได้เลย!</p>
+        <div id="end-screen" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-md z-50 pointer-auto px-4">
+            <div class="glass-panel p-8 sm:p-14 rounded-[3rem] w-full max-w-2xl text-center shadow-2xl border-t border-white/20 relative overflow-hidden">
+                <!-- Decorative background elements -->
+                <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-400 via-blue-500 to-purple-500"></div>
                 
-                <button onclick="location.reload()" class="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-4 px-12 rounded-full text-xl shadow-lg transform transition hover:scale-105 active:scale-95">
-                    ทำแบบทดสอบอีกครั้ง
+                <h1 class="text-4xl sm:text-5xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-orange-400 tracking-tight">ทดสอบเสร็จสิ้น!</h1>
+                <p class="text-lg sm:text-xl text-gray-300 mb-6">ความรู้พื้นฐานของคุณอยู่ในระดับน่าประทับใจ</p>
+                
+                <div class="inline-block bg-black/40 rounded-[2rem] p-8 px-12 mb-8 border border-white/10 shadow-inner">
+                    <div class="text-gray-400 text-sm tracking-widest uppercase mb-2">Total Score</div>
+                    <div class="text-7xl sm:text-8xl font-black text-white drop-shadow-[0_0_30px_rgba(250,204,21,0.4)] flex items-baseline justify-center gap-2">
+                        <span id="final-score">0</span>
+                        <span class="text-3xl sm:text-4xl text-gray-500 font-medium">/150</span>
+                    </div>
+                </div>
+                
+                <p class="text-base sm:text-lg text-blue-200 mb-8 max-w-md mx-auto">เตรียมพร้อมเข้าสู่บทเรียน "การออกแบบและพัฒนาเว็บ" ไปด้วยกัน!</p>
+                
+                <button onclick="location.reload()" class="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-4 px-12 rounded-full text-xl shadow-[0_0_20px_rgba(59,130,246,0.4)] transform transition active:scale-95 border border-white/20">
+                    หน้าหลัก (ทำอีกครั้ง)
                 </button>
             </div>
         </div>
@@ -248,38 +270,38 @@
     </div>
 
     <script>
+        /* Quiz Data: 30 Questions (True = 0, False = 1) */
         const quizData = [
-            // 0 = ถูก, 1 = ผิด
-            { q: "การออกแบบเว็บไซต์คือกระบวนการสร้างและจัดรูปแบบเนื้อหาเพื่อแสดงผลบนเบราว์เซอร์อินเทอร์เน็ต", ans: 0 },
-            { q: "โครงสร้างเว็บไซต์แบบเส้นตรง (Linear) ผู้ใช้สามารถข้ามหน้าไปมาได้อย่างอิสระโดยไม่ต้องดูตามลำดับ", ans: 1 },
+            { q: "การออกแบบเว็บไซต์คือกระบวนการสร้างและจัดรูปแบบเนื้อหาเพื่อแสดงผลบนเบราว์เซอร์", ans: 0 },
+            { q: "โครงสร้างเว็บแบบเส้นตรง (Linear) ผู้ใช้สามารถข้ามหน้าไปมาได้อย่างอิสระโดยไม่ต้องดูตามลำดับ", ans: 1 },
             { q: "Sitemap มีประโยชน์เพื่อช่วยป้องกันไวรัสและการแฮ็กเข้าสู่เว็บไซต์", ans: 1 },
             { q: "Wireframe คือภาพร่างโครงสร้างหน้าจอเพื่อจัดวางองค์ประกอบก่อนการออกแบบกราฟิกจริง", ans: 0 },
-            { q: "UI (User Interface) มุ่งเน้นไปที่ประสบการณ์และความรู้สึกโดยรวมที่ผู้ใช้ได้รับจากระบบเท่านั้น", ans: 1 }, // สลับกับ UX
-            { q: "UX (User Experience) คือส่วนที่ผู้ใช้มองเห็นและสัมผัสได้บนหน้าจอ เช่น ปุ่ม สี และเลย์เอาต์", ans: 1 }, // สลับกับ UI
+            { q: "UI (User Interface) มุ่งเน้นไปที่ความรู้สึกโดยรวมที่ผู้ใช้ได้รับจากระบบเท่านั้น", ans: 1 },
+            { q: "UX (User Experience) คือส่วนที่ผู้ใช้มองเห็นบนหน้าจอ เช่น ปุ่ม สี และเลย์เอาต์", ans: 1 },
             { q: "การใช้สีตัวอักษรที่กลืนกับสีพื้นหลังจะช่วยให้ผู้ใช้สามารถอ่านข้อมูลได้ง่ายและสบายตาขึ้น", ans: 1 },
             { q: "Typography ในการออกแบบเว็บคือศาสตร์แห่งการจัดการรูปแบบ ขนาด และการจัดวางตัวอักษร", ans: 0 },
-            { q: "ส่วน Footer ของเว็บไซต์มักจะบรรจุข้อมูลลิขสิทธิ์ ช่องทางการติดต่อ และลิงก์นโยบายต่างๆ", ans: 0 },
+            { q: "ส่วน Footer ของเว็บไซต์มักบรรจุข้อมูลลิขสิทธิ์ ช่องทางการติดต่อ และลิงก์นโยบายต่างๆ", ans: 0 },
             { q: "ส่วน Header มักจะเป็นส่วนที่อยู่ล่างสุดของหน้าเว็บไซต์เสมอ", ans: 1 },
             { q: "ภาษา HTML ใช้สำหรับสร้างโครงสร้างและเนื้อหาหลักของหน้าเว็บ", ans: 0 },
             { q: "ภาษา CSS ใช้สำหรับตกแต่งและจัดรูปแบบการแสดงผลของหน้าเว็บให้สวยงาม", ans: 0 },
-            { q: "JavaScript ทำให้หน้าเว็บเป็นเพียงภาพนิ่งและไม่สามารถโต้ตอบ (Interactive) กับผู้ใช้ได้", ans: 1 },
+            { q: "JavaScript ทำให้หน้าเว็บเป็นเพียงภาพนิ่งและไม่สามารถโต้ตอบกับผู้ใช้ได้", ans: 1 },
             { q: "แท็ก <img> ในภาษา HTML ใช้สำหรับการแทรกรูปภาพลงในหน้าเว็บ", ans: 0 },
             { q: "การกำหนดสีของตัวอักษรในภาษา CSS ใช้คำสั่ง background-color", ans: 1 },
-            { q: "Responsive Web Design คือการออกแบบเว็บไซต์ให้หน้าต่างเว็บพอดีและรองรับทุกขนาดหน้าจอ", ans: 0 },
-            { q: "Viewport meta tag ใช้เพื่อควบคุมการแสดงผลและอัตราส่วนบนหน้าจออุปกรณ์มือถือ", ans: 0 },
-            { q: "หน่วยวัด px (Pixels) ใน CSS มีความยืดหยุ่นและปรับตามขนาดหน้าจอได้ดีกว่าหน่วย % หรือ vw", ans: 1 },
-            { q: "Media Queries ใน CSS มีไว้เพื่อปรับเปลี่ยนสไตล์ตามขนาดหน้าจอของคุณสมบัติอุปกรณ์ที่ผู้ใช้ใช้งาน", ans: 0 },
-            { q: "หลักการ Mobile-First Design คือการออกแบบโดยเริ่มจากมุมมองหน้าจอโทรศัพท์มือถือก่อนเป็นอันดับแรก", ans: 0 },
-            { q: "Visual Studio Code เป็นหนึ่งในเครื่องมือที่ได้รับความนิยมในการนำมาเขียนโค้ดเว็บไซต์", ans: 0 },
-            { q: "React, Vue และ Angular เป็นตัวอย่างของเครื่องมือที่ใช้ในการจัดการระบบฐานข้อมูล (Database) โดยเฉพาะ", ans: 1 },
-            { q: "Figma เป็นเครื่องมือออนไลน์ที่นิยมใช้ในการสร้าง Prototype และออกแบบ UI ร่วมกันเป็นทีม", ans: 0 },
-            { q: "การทดสอบเว็บไซต์ (Testing) ควรทำการทดสอบบน Google Chrome เพียงเบราว์เซอร์เดียวก็เพียงพอแล้ว", ans: 1 },
-            { q: "Domain Name คือชื่อที่อยู่ของเว็บไซต์ที่ใช้แทน IP Address เพื่อให้ผู้ใช้งานสามารถจดจำได้ง่าย", ans: 0 },
-            { q: "Web Hosting คือบริการให้เช่าพื้นที่สำหรับจัดเก็บไฟล์ข้อมูลทั้งหมดของเว็บไซต์บนเซิร์ฟเวอร์", ans: 0 },
+            { q: "Responsive Web Design คือการออกแบบเว็บไซต์ให้พอดีและรองรับทุกขนาดหน้าจอ", ans: 0 },
+            { q: "Viewport meta tag ใช้เพื่อควบคุมอัตราส่วนบนหน้าจออุปกรณ์มือถือ", ans: 0 },
+            { q: "หน่วยวัด px ใน CSS ปรับตามขนาดหน้าจอได้ดีกว่าหน่วย % หรือ vw", ans: 1 },
+            { q: "Media Queries ใน CSS มีไว้เพื่อปรับเปลี่ยนสไตล์ตามขนาดหน้าจอของอุปกรณ์", ans: 0 },
+            { q: "หลักการ Mobile-First Design คือการออกแบบโดยเริ่มจากมุมมองหน้าจอโทรศัพท์มือถือก่อน", ans: 0 },
+            { q: "Visual Studio Code เป็นเครื่องมือที่ได้รับความนิยมในการนำมาเขียนโค้ดเว็บไซต์", ans: 0 },
+            { q: "React, Vue และ Angular เป็นเครื่องมือที่ใช้ในการจัดการระบบฐานข้อมูล (Database) โดยเฉพาะ", ans: 1 },
+            { q: "Figma เป็นเครื่องมือออนไลน์ที่นิยมใช้ในการสร้าง Prototype และออกแบบ UI", ans: 0 },
+            { q: "การทดสอบเว็บไซต์ ควรทำบน Google Chrome เพียงเบราว์เซอร์เดียวก็เพียงพอแล้ว", ans: 1 },
+            { q: "Domain Name คือชื่อที่อยู่เว็บไซต์ที่ใช้แทน IP Address เพื่อให้จดจำได้ง่าย", ans: 0 },
+            { q: "Web Hosting คือบริการให้เช่าพื้นที่จัดเก็บไฟล์เว็บไซต์บนเซิร์ฟเวอร์", ans: 0 },
             { q: "โปรโตคอล HTTP มีระบบการเข้ารหัสข้อมูลที่ให้ความปลอดภัยสูงกว่า HTTPS", ans: 1 },
-            { q: "ขั้นตอน UAT (User Acceptance Testing) ควรทำหลักจากที่เว็บไซต์เผยแพร่ให้คนทั่วไปใช้งานแล้วเท่านั้น", ans: 1 },
-            { q: "การเว้นพื้นที่ว่าง (White Space) ช่วยให้องค์ประกอบบนหน้าเว็บดูไม่อึดอัดและแบ่งเนื้อหาได้ชัดเจนขึ้น", ans: 0 },
-            { q: "การใช้ตัวอักษร (Font) หลายๆ รูปแบบในหน้าเดียวกันเยอะๆ จะทำให้เว็บไซต์ดูมีความเป็นมืออาชีพมากขึ้น", ans: 1 }
+            { q: "ขั้นตอน UAT (User Acceptance Testing) ควรทำหลักจากที่เว็บเผยแพร่ให้คนทั่วไปใช้งานแล้วเท่านั้น", ans: 1 },
+            { q: "การเว้นพื้นที่ว่าง (White Space) ช่วยให้องค์ประกอบบนหน้าเว็บดูไม่อึดอัด", ans: 0 },
+            { q: "การใช้ตัวอักษร (Font) หลายๆ รูปแบบในหน้าเดียวกัน จะทำให้เว็บไซต์ดูเป็นมืออาชีพมากขึ้น", ans: 1 }
         ];
 
         let currentQuestion = 0;
@@ -288,7 +310,7 @@
         let gameTimer;
         let secondsElapsed = 0;
         let audioCtx;
-        let wasPinchedLastFrame = false; // ตรวจจับจังหวะการเปลี่ยนจาก "ปล่อย" เป็น "จีบ"
+        let isPinching = false; // สถานะการจีบมือในเฟรมปัจจุบัน
         
         // DOM Elements
         const startScreen = document.getElementById('start-screen');
@@ -302,6 +324,7 @@
         const scoreDisplay = document.getElementById('score-display');
         const timerDisplay = document.getElementById('timer-display');
         const feedbackText = document.getElementById('feedback-text');
+        const feedbackPanel = document.getElementById('feedback-panel');
         const finalScoreDisplay = document.getElementById('final-score');
         
         const choiceBtns = [
@@ -309,6 +332,7 @@
             document.getElementById('btn-1')
         ];
 
+        // Audio System (Synthesized sounds - no external files needed)
         function initAudio() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -318,47 +342,42 @@
             }
         }
 
-        // เสียงตอบถูก: เสียงใสๆ เพราะๆ 
+        // เสียงตอบถูก: เสียงใสๆ (Sine Wave)
         function playSuccessSound() {
             if(!audioCtx) return;
             const osc = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
-            
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
-            
+            osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1000, audioCtx.currentTime + 0.1);
             gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.05);
+            gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.05);
             gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-            
             osc.connect(gainNode);
             gainNode.connect(audioCtx.destination);
             osc.start();
             osc.stop(audioCtx.currentTime + 0.5);
         }
 
-        // เสียงตอบผิด: เสียงเตือนชัดเจน ดัง ฟังชัด (Sawtooth wave)
+        // เสียงตอบผิด: เสียงดังชัดเจน (Sawtooth Wave)
         function playErrorSound() {
             if(!audioCtx) return;
             const osc = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
-            
             osc.type = 'sawtooth';
-            // Low frequency buzz
+            // ความถี่ต่ำให้เสียงทุ้ม แป๊ดๆ ฟังชัด
             osc.frequency.setValueAtTime(150, audioCtx.currentTime);
             osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.3);
-            
-            // High volume for clear error as requested
-            gainNode.gain.setValueAtTime(0.8, audioCtx.currentTime);
+            // ตั้งความดังให้ชัดเจน
+            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
             gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-            
             osc.connect(gainNode);
             gainNode.connect(audioCtx.destination);
             osc.start();
             osc.stop(audioCtx.currentTime + 0.4);
         }
 
+        // Confetti System
         const confettiCanvas = document.getElementById('confetti-canvas');
         const ctxConfetti = confettiCanvas.getContext('2d');
         let particles = [];
@@ -371,13 +390,13 @@
         resizeConfetti();
 
         function fireConfetti() {
-            const colors = ['#facc15', '#4ade80', '#60a5fa', '#f472b6', '#a78bfa'];
-            for(let i=0; i<100; i++) {
+            const colors = ['#facc15', '#4ade80', '#60a5fa', '#f472b6', '#ffffff'];
+            for(let i=0; i<80; i++) {
                 particles.push({
                     x: confettiCanvas.width / 2,
                     y: confettiCanvas.height / 2 + 100,
                     r: Math.random() * 6 + 4,
-                    dx: Math.random() * 20 - 10,
+                    dx: Math.random() * 24 - 12,
                     dy: Math.random() * -20 - 5,
                     color: colors[Math.floor(Math.random() * colors.length)],
                     tilt: Math.floor(Math.random() * 10) - 10,
@@ -393,7 +412,7 @@
                 p.tiltAngle += p.tiltAngleInc;
                 p.y += (Math.cos(p.tiltAngle) + 1 + p.r / 2) / 2;
                 p.x += Math.sin(p.tiltAngle) * 2;
-                p.dy += 0.5; // gravity
+                p.dy += 0.4; // gravity
                 p.y += p.dy;
                 p.x += p.dx;
 
@@ -412,16 +431,14 @@
         }
         drawConfetti();
 
+        // Game Logic
         function startGame() {
-            initAudio(); // Initialize audio context on user interaction
+            initAudio();
             startScreen.style.opacity = '0';
             setTimeout(() => {
                 startScreen.classList.add('hidden');
                 gameScreen.classList.remove('hidden');
                 gameScreen.classList.add('flex');
-                
-                // Shuffle questions (optional, but good for tests)
-                // For this request, we keep it ordered or you can shuffle. We'll keep order for now.
                 
                 loadQuestion(0);
                 startTimer();
@@ -450,15 +467,18 @@
             qNumDisplay.innerText = `${index + 1} / ${quizData.length}`;
             qTextDisplay.innerText = q.q;
             
+            // Reset Button Styles
             choiceBtns.forEach((btn) => {
-                // Reset styling classes
-                btn.className = "choice-btn glass-card rounded-3xl p-4 sm:p-8 flex flex-col items-center justify-center shadow-lg w-1/2 transition-all";
-                if(btn.id === 'btn-0') btn.classList.add('border-green-500/30');
-                if(btn.id === 'btn-1') btn.classList.add('border-red-500/30');
+                btn.className = "choice-btn glass-card rounded-[2rem] p-4 sm:p-8 flex flex-col items-center justify-center w-1/2 border-b-4 hover:bg-white/10 transition-all";
+                if(btn.id === 'btn-0') btn.classList.add('border-b-green-500/50');
+                if(btn.id === 'btn-1') btn.classList.add('border-b-red-500/50');
+                btn.style.transform = 'scale(1)';
+                btn.style.boxShadow = '';
             });
 
-            feedbackText.innerText = "🤏 เลื่อนมือไปที่คำตอบ แล้วจีบนิ้วโป้งและนิ้วชี้เข้าหากัน 🤏";
-            feedbackText.className = "text-sm sm:text-xl font-bold text-yellow-300";
+            feedbackText.innerHTML = "<span>🤏</span> เลื่อนมือทับปุ่ม แล้ว <b>จีบนิ้ว</b> เพื่อตอบ";
+            feedbackText.className = "text-sm sm:text-lg font-bold text-yellow-300 flex items-center justify-center gap-2";
+            feedbackPanel.className = "glass-panel px-6 py-3 rounded-full text-center transition-all duration-300 transform scale-100 shadow-[0_0_20px_rgba(0,0,0,0.3)] border border-yellow-500/30";
         }
 
         function handleAnswer(selectedIndex) {
@@ -470,23 +490,25 @@
             const selectedBtn = choiceBtns[selectedIndex];
 
             if (isCorrect) {
-                // Correct Flow
                 selectedBtn.classList.add('correct-answer');
                 playSuccessSound();
                 fireConfetti();
                 score += 5;
                 scoreDisplay.innerText = score;
-                feedbackText.innerText = "✅ ถูกต้อง! Excellent!";
-                feedbackText.className = "text-xl sm:text-2xl font-bold text-green-400 drop-shadow-md";
+                
+                feedbackText.innerHTML = "✅ ถูกต้อง! Excellent!";
+                feedbackText.className = "text-lg sm:text-2xl font-black text-green-400 drop-shadow-md";
+                feedbackPanel.classList.add('border-green-400', 'bg-green-900/40', 'scale-110');
             } else {
-                // Incorrect Flow
                 selectedBtn.classList.add('wrong-answer');
                 playErrorSound();
-                feedbackText.innerText = "❌ ยังไม่ถูกต้อง (Try Again)";
-                feedbackText.className = "text-xl sm:text-2xl font-bold text-red-400 drop-shadow-md";
+                
+                feedbackText.innerHTML = "❌ ยังไม่ถูกต้อง (Try Again)";
+                feedbackText.className = "text-lg sm:text-2xl font-black text-red-400 drop-shadow-md";
+                feedbackPanel.classList.add('border-red-400', 'bg-red-900/40', 'scale-110');
             }
 
-            // Move to next question after 1.2s
+            // Move to next question automatically
             setTimeout(() => {
                 currentQuestion++;
                 loadQuestion(currentQuestion);
@@ -501,11 +523,11 @@
             finalScoreDisplay.innerText = score;
         }
 
+        // Camera & AI Processing
         const videoElement = document.getElementsByClassName('input_video')[0];
         const canvasElement = document.getElementsByClassName('output_canvas')[0];
         const canvasCtx = canvasElement.getContext('2d');
 
-        // Resize canvas to window size
         function resizeCanvas() {
             canvasElement.width = window.innerWidth;
             canvasElement.height = window.innerHeight;
@@ -514,79 +536,72 @@
         resizeCanvas();
 
         function onResults(results) {
-            // Draw camera feed mirrored
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             
-            // Mirror image horizontally to act like a mirror
+            // Mirror logic for drawing video
             canvasCtx.translate(canvasElement.width, 0);
             canvasCtx.scale(-1, 1);
             
-            // Draw image covering the whole canvas
             if (results.image) {
                 canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
             }
 
-            let currentPinchState = false;
+            let currentlyPinching = false;
+            let cursorX = -1;
+            let cursorY = -1;
 
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 for (const landmarks of results.multiHandLandmarks) {
-                    // Draw hand skeleton
-                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#ffffff', lineWidth: 2});
-                    drawLandmarks(canvasCtx, landmarks, {color: '#3b82f6', lineWidth: 1, radius: 2});
+                    // Draw Hand Skeleton
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(255,255,255,0.4)', lineWidth: 2});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#60a5fa', lineWidth: 1, radius: 2});
                     
-                    // Get Thumb Tip (Landmark 4) and Index Tip (Landmark 8)
-                    const thumbTip = landmarks[4];
-                    const indexTip = landmarks[8];
+                    // Get Thumb (4) and Index (8)
+                    const thumb = landmarks[4];
+                    const index = landmarks[8];
                     
-                    // Calculate distance for Pinch Detection
-                    const dx = thumbTip.x - indexTip.x;
-                    const dy = thumbTip.y - indexTip.y;
+                    // Calculate Distance for Pinch
+                    const dx = thumb.x - index.x;
+                    const dy = thumb.y - index.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
                     
-                    // หากระยะห่างน้อยกว่าค่าที่กำหนด (ประมาณ 5% ของจอ) จะถือว่า "จีบมือ"
-                    currentPinchState = distance < 0.05; 
+                    // Threshold for pinching (Adjustable)
+                    currentlyPinching = distance < 0.05;
                     
-                    // หาจุดกึ่งกลางระหว่างนิ้วโป้งกับนิ้วชี้ เพื่อวาด Cursor
-                    const midX = (thumbTip.x + indexTip.x) / 2;
-                    const midY = (thumbTip.y + indexTip.y) / 2;
+                    // Midpoint for cursor
+                    const midX = (thumb.x + index.x) / 2;
+                    const midY = (thumb.y + index.y) / 2;
                     
-                    const canvasMidX = midX * canvasElement.width;
-                    const canvasMidY = midY * canvasElement.height;
+                    cursorX = midX * canvasElement.width;
+                    cursorY = midY * canvasElement.height;
                     
-                    // Draw Interactive Cursor
+                    // Draw Interactive Cursor/Ring
                     canvasCtx.beginPath();
-                    // วงเล็กลงเมื่อจีบมือ
-                    canvasCtx.arc(canvasMidX, canvasMidY, currentPinchState ? 12 : 25, 0, 2 * Math.PI);
-                    canvasCtx.fillStyle = currentPinchState ? 'rgba(250, 204, 21, 0.9)' : 'rgba(59, 130, 246, 0.4)';
+                    // วงจะเล็กลงและสว่างขึ้นเมื่อจีบ
+                    canvasCtx.arc(cursorX, cursorY, currentlyPinching ? 12 : 25, 0, 2 * Math.PI);
+                    canvasCtx.fillStyle = currentlyPinching ? 'rgba(250, 204, 21, 0.9)' : 'rgba(59, 130, 246, 0.4)';
                     canvasCtx.fill();
-                    canvasCtx.lineWidth = currentPinchState ? 4 : 2;
-                    canvasCtx.strokeStyle = currentPinchState ? '#fef08a' : '#93c5fd';
+                    canvasCtx.lineWidth = currentlyPinching ? 4 : 2;
+                    canvasCtx.strokeStyle = currentlyPinching ? '#fef08a' : '#93c5fd';
                     canvasCtx.stroke();
-
-                    // Collision Detection with DOM Elements
-                    // Need to un-mirror X coordinate for DOM matching
+                    
+                    // Convert mirrored coordinates back to DOM screen coordinates
                     const domX = (1 - midX) * window.innerWidth;
                     const domY = midY * window.innerHeight;
 
-                    // แสดงเอฟเฟกต์ Hover เมื่อเลื่อนมือทับปุ่ม (โดยที่ยังไม่จีบ)
-                    checkHover(domX, domY);
-
-                    // ยืนยันคำตอบเมื่อเพิ่งเริ่ม "จีบมือ" (transition จาก false ไป true)
-                    if (currentPinchState && !wasPinchedLastFrame) {
-                        checkCollision(domX, domY);
-                    }
+                    handleInteraction(domX, domY, currentlyPinching);
                 }
+            } else {
+                // No hands detected
+                handleInteraction(-1, -1, false);
             }
             
-            // อัปเดตสถานะการจีบมือเพื่อใช้ในเฟรมถัดไป
-            wasPinchedLastFrame = currentPinchState;
-            
+            isPinching = currentlyPinching;
             canvasCtx.restore();
         }
 
-        // ฟังก์ชันจัดการแสดงผลเวลาเอามือเลื่อนทับปุ่ม
-        function checkHover(x, y) {
+        function handleInteraction(x, y, currentlyPinching) {
             if (isProcessingAnswer || currentQuestion >= quizData.length || startScreen.style.opacity === '0' === false) {
                  choiceBtns.forEach(btn => {
                     btn.style.transform = 'scale(1)';
@@ -595,27 +610,25 @@
                  return;
             }
 
-            choiceBtns.forEach((btn) => {
-                const rect = btn.getBoundingClientRect();
-                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-                    btn.style.transform = 'scale(1.05)';
-                    // สีขอบจะเปลี่ยนไปตามปุ่มที่ Hover
-                    btn.style.boxShadow = btn.dataset.index === "0" ? '0 0 25px rgba(74, 222, 128, 0.8)' : '0 0 25px rgba(239, 68, 68, 0.8)';
-                } else {
-                    btn.style.transform = 'scale(1)';
-                    btn.style.boxShadow = '';
-                }
-            });
-        }
-
-        // ฟังก์ชันจัดการเมื่อออกคำสั่งจีบมือเพื่อตอบคำถาม
-        function checkCollision(x, y) {
-            if (isProcessingAnswer || currentQuestion >= quizData.length || startScreen.style.opacity === '0' === false) return;
+            let isHoveringAny = false;
 
             choiceBtns.forEach((btn, index) => {
                 const rect = btn.getBoundingClientRect();
-                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-                    handleAnswer(index);
+                const isHovering = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+                
+                if (isHovering) {
+                    isHoveringAny = true;
+                    // Hover Visual
+                    btn.style.transform = 'scale(1.05)';
+                    btn.style.boxShadow = index === 0 ? '0 0 30px rgba(34, 197, 94, 0.4)' : '0 0 30px rgba(239, 68, 68, 0.4)';
+                    
+                    // Trigger Click ONLY if newly pinched (transition from not pinching to pinching)
+                    if (currentlyPinching && !isPinching) {
+                        handleAnswer(index);
+                    }
+                } else {
+                    btn.style.transform = 'scale(1)';
+                    btn.style.boxShadow = '';
                 }
             });
         }
@@ -628,12 +641,13 @@
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
-            minDetectionConfidence: 0.7,
-            minTrackingConfidence: 0.7
+            minDetectionConfidence: 0.65,
+            minTrackingConfidence: 0.65
         });
         
         hands.onResults(onResults);
 
+        // Initialize Camera
         const camera = new Camera(videoElement, {
             onFrame: async () => {
                 await hands.send({image: videoElement});
@@ -642,21 +656,17 @@
             height: 720
         });
 
-        // Start camera and enable Start button when ready
+        // Start Camera
         camera.start().then(() => {
             loadingIndicator.style.display = 'none';
             startBtn.classList.remove('hidden');
-            
-            // Update instruction text on Start Screen
-            document.querySelector('#start-screen p').innerHTML = `เกมนี้เป็นข้อสอบก่อนเรียนรายวิชาการออกแบบและพัฒนาเว็บ จำนวน 30 ข้อ เพื่อประเมินความรู้พื้นฐานก่อนเข้าสู่บทเรียน<br>
-                    <span class="text-blue-300 font-medium mt-2 block">🤏 เลื่อนมือไปบนตัวเลือกที่ต้องการ และใช้ท่า "จีบมือ" (นิ้วโป้งแตะนิ้วชี้) เพื่อยืนยันคำตอบ!</span>`;
         }).catch(err => {
-            loadingIndicator.innerText = "เกิดข้อผิดพลาดในการเข้าถึงกล้อง กรุณาอนุญาตการใช้กล้อง";
-            loadingIndicator.className = "text-red-400 text-xl font-bold mb-6";
-            console.error(err);
+            loadingIndicator.innerText = "เกิดข้อผิดพลาด: โปรดอนุญาตให้เว็บไซต์ใช้งานกล้อง (Camera Permission)";
+            loadingIndicator.className = "text-red-400 text-sm sm:text-lg font-bold mb-6";
+            console.error("Camera Error:", err);
         });
 
-        // Add standard click listeners for mouse/touch fallback just in case
+        // Fallback: Allow normal touch/click for testing or if AI fails
         choiceBtns.forEach((btn, index) => {
             btn.addEventListener('click', () => {
                 handleAnswer(index);
